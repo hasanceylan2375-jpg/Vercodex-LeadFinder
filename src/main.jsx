@@ -35,6 +35,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
+  const [instagramSearching, setInstagramSearching] = useState(false);
+  const [instagramFound, setInstagramFound] = useState(0);
 
   const searchLeads = async () => {
     if (!city) {
@@ -55,10 +57,17 @@ function App() {
 
       const restored = (data.leads || []).map(lead => ({
         ...lead,
-        status: savedStatuses[lead.id] || lead.status
+        status: savedStatuses[lead.id] || lead.status,
+        instagram: lead.instagram || "",
+        instagramSearching: false
       }));
       setLeads(restored);
       setSearched(true);
+      setInstagramFound(0);
+
+      // Sonuçlar ekrana geldikten sonra, web sitesi olmayan adaylar için
+      // Instagram hesaplarını arka planda otomatik bul.
+      autoFindInstagram(restored);
     } catch (err) {
       setError(err.message || "Bir hata oluştu.");
       setLeads([]);
@@ -92,9 +101,79 @@ function App() {
     }));
   };
 
-  const instagramSearch = (lead) => {
-    const search = encodeURIComponent(`site:instagram.com "${lead.name}" "${lead.city}"`);
-    window.open(`https://www.google.com/search?q=${search}`, "_blank", "noopener,noreferrer");
+  const findInstagram = async (lead) => {
+    setLeads(current => current.map(item =>
+      item.id === lead.id ? { ...item, instagramSearching: true } : item
+    ));
+
+    try {
+      const params = new URLSearchParams({
+        name: lead.name,
+        city: lead.city,
+        address: lead.address || "",
+        phone: lead.phone || ""
+      });
+
+      const response = await fetch("/api/instagram-search?" + params.toString());
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Instagram araması başarısız.");
+      }
+
+      if (data.found && data.instagram) {
+        setInstagramFound(current => current + 1);
+      }
+
+      setLeads(current => current.map(item =>
+        item.id === lead.id
+          ? { ...item, instagram: data.instagram || "", instagramUrl: data.instagramUrl || "", instagramSearching: false }
+          : item
+      ));
+    } catch (err) {
+      setLeads(current => current.map(item =>
+        item.id === lead.id ? { ...item, instagramSearching: false } : item
+      ));
+      setError(err.message || "Instagram araması başarısız.");
+    }
+  };
+
+  const autoFindInstagram = async (items) => {
+    if (!items.length) return;
+
+    try {
+      const healthResponse = await fetch("/api/health");
+      const health = await healthResponse.json();
+
+      if (!health.instagramSearchConfigured) {
+        setError("Instagram otomatik araması için GOOGLE_CSE_API_KEY ve GOOGLE_CSE_ID .env dosyasına eklenmeli. Klinik araması çalışmaya devam eder.");
+        return;
+      }
+    } catch {
+      return;
+    }
+
+    const targets = items.filter(lead => !lead.website);
+
+    setInstagramSearching(targets.length > 0);
+
+    // Aynı anda sınırlı sayıda arama yaparak tarayıcıyı/API'yi boğma.
+    const concurrency = 4;
+    let index = 0;
+
+    const worker = async () => {
+      while (index < targets.length) {
+        const currentIndex = index;
+        index += 1;
+        await findInstagram(targets[currentIndex]);
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, targets.length) }, worker)
+    );
+
+    setInstagramSearching(false);
   };
 
   const buildMessage = (lead) => `Merhaba ${lead.name} 👋
@@ -222,10 +301,10 @@ Web siteniz olmadığı için size ulaşmak istedik. Vercodex olarak işletmeler
 
         <section className="results-card">
           <div className="results-head">
-            <div><h2>Aday işletmeler</h2><span>{filtered.length} sonuç gösteriliyor · Arama başına 60'a kadar</span></div>
+            <div><h2>Aday işletmeler</h2><span>{filtered.length} sonuç gösteriliyor · Çoklu Google Places sorgusu</span></div>
             <div className="result-actions">
               <button className="export-btn" onClick={exportExcel} disabled={!filtered.length}><Download size={14}/> Excel</button>
-              <div className="result-tag"><Globe2 size={15}/> Google Places</div>
+              <div className="result-tag"><Globe2 size={15}/> Google Places {instagramSearching ? "· Instagramlar aranıyor..." : instagramFound ? `· ${instagramFound} Instagram bulundu` : ""}</div>
             </div>
           </div>
           <div className="table-wrap">
@@ -243,9 +322,15 @@ Web siteniz olmadığı için size ulaşmak istedik. Vercodex olarak işletmeler
                     </td>
                     <td>
                       <div className="social-actions">
-                        <button className="instagram-btn" onClick={()=>instagramSearch(lead)} title="Google üzerinden Instagram hesabını ara">
-                          <Instagram size={14}/> Bul
-                        </button>
+                        {lead.instagram ? (
+                          <a className="instagram-found" href={lead.instagramUrl || `https://www.instagram.com/${lead.instagram.replace("@", "")}/`} target="_blank" rel="noreferrer">
+                            <Instagram size={14}/> {lead.instagram}
+                          </a>
+                        ) : (
+                          <button className="instagram-btn" onClick={()=>findInstagram(lead)} disabled={lead.instagramSearching} title="Google üzerinden otomatik Instagram araması yap">
+                            <Instagram size={14}/> {lead.instagramSearching ? "Aranıyor..." : "Bul"}
+                          </button>
+                        )}
                         <button className="message-btn" onClick={()=>copyMessage(lead)} title="Kişiselleştirilmiş mesajı kopyala">
                           Mesaj
                         </button>
@@ -268,7 +353,7 @@ Web siteniz olmadığı için size ulaşmak istedik. Vercodex olarak işletmeler
             </table>
           </div>
           <div className="results-footer">
-            <span><b>Bul</b> Instagram hesabını arar · <b>Mesaj</b> işletmeye özel DM metnini panoya kopyalar.</span>
+            <span><b>Instagram</b> sonuçları Google web aramasıyla otomatik taranır · <b>Bul</b> bulunamayan hesabı tekrar dener.</span>
             <a href="https://github.com/hasanceylan2375-jpg/Vercodex-LeadFinder" target="_blank" rel="noreferrer">GitHub reposu <ExternalLink size={14}/></a>
           </div>
         </section>
