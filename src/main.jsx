@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { createRoot } from "react-dom/client";
 import {
   Building2, CheckCircle2, ExternalLink, Globe2, Instagram, MapPin, Phone,
@@ -118,22 +119,35 @@ Web siteniz olmadığı için size ulaşmak istedik. Vercodex olarak işletmeler
     window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
   };
 
-  const exportCsv = () => {
+  const exportExcel = () => {
     if (!filtered.length) return;
-    const headers = ["İşletme","Kategori","Adres","Telefon","Web Sitesi","Instagram","Puan","Yorum Sayısı","Durum","Google Maps"];
-    const rows = filtered.map(l => [
-      l.name,l.category,l.address,l.phone,l.website,l.instagram || "",l.rating ?? "",l.reviewCount ?? 0,l.status,l.mapsUrl
-    ]);
-    const csv = [headers, ...rows].map(row =>
-      row.map(value => `"${String(value ?? "").replaceAll('"','""')}"`).join(",")
-    ).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], {type:"text/csv;charset=utf-8;"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `vercodex-${city.toLowerCase()}-${category.toLowerCase().replaceAll(" ","-")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+
+    const rows = filtered.map((l, index) => ({
+      "No": index + 1,
+      "İşletme": l.name,
+      "Kategori": l.category,
+      "Adres": l.address,
+      "Telefon": l.phone || "",
+      "Web Sitesi": l.website || "",
+      "Instagram": l.instagram || "",
+      "Google Puanı": l.rating ?? "",
+      "Yorum Sayısı": l.reviewCount ?? 0,
+      "Durum": l.status,
+      "Google Maps": l.mapsUrl || ""
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet["!cols"] = [
+      { wch: 6 }, { wch: 32 }, { wch: 20 }, { wch: 48 }, { wch: 18 },
+      { wch: 38 }, { wch: 24 }, { wch: 12 }, { wch: 14 }, { wch: 22 }, { wch: 48 }
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Müşteri Adayları");
+
+    const safeCity = city.toLowerCase().replaceAll(" ", "-");
+    const safeCategory = category.toLowerCase().replaceAll(" ", "-");
+    XLSX.writeFile(workbook, `vercodex-${safeCity}-${safeCategory}.xlsx`);
   };
 
   return (
@@ -210,7 +224,7 @@ Web siteniz olmadığı için size ulaşmak istedik. Vercodex olarak işletmeler
           <div className="results-head">
             <div><h2>Aday işletmeler</h2><span>{filtered.length} sonuç gösteriliyor · Arama başına 60'a kadar</span></div>
             <div className="result-actions">
-              <button className="export-btn" onClick={exportCsv} disabled={!filtered.length}><Download size={14}/> Excel/CSV</button>
+              <button className="export-btn" onClick={exportExcel} disabled={!filtered.length}><Download size={14}/> Excel</button>
               <div className="result-tag"><Globe2 size={15}/> Google Places</div>
             </div>
           </div>
