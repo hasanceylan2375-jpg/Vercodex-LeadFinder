@@ -22,40 +22,68 @@ app.get("/api/leads", async (req, res) => {
   }
 
   const textQuery = [category, keyword, city].filter(Boolean).join(" ");
+  const fieldMask = [
+    "places.id",
+    "places.displayName",
+    "places.formattedAddress",
+    "places.nationalPhoneNumber",
+    "places.websiteUri",
+    "places.googleMapsUri",
+    "places.primaryType",
+    "places.rating",
+    "places.userRatingCount",
+    "nextPageToken"
+  ].join(",");
 
   try {
-    const response = await fetch(PLACES_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": process.env.GOOGLE_PLACES_API_KEY,
-        "X-Goog-FieldMask": [
-          "places.id",
-          "places.displayName",
-          "places.formattedAddress",
-          "places.nationalPhoneNumber",
-          "places.websiteUri",
-          "places.googleMapsUri",
-          "places.primaryType"
-        ].join(",")
-      },
-      body: JSON.stringify({
+    const allPlaces = [];
+    let pageToken = null;
+
+    // Text Search (New) en fazla 20 sonucu sayfa başına döndürür.
+    // Kullanıcı tek aramada daha fazla aday görebilsin diye mevcut sayfaları topluyoruz.
+    for (let page = 0; page < 3; page += 1) {
+      const body = {
         textQuery,
         pageSize: 20,
         languageCode: "tr",
         regionCode: "TR"
-      })
-    });
+      };
 
-    const data = await response.json();
+      if (pageToken) body.pageToken = pageToken;
 
-    if (!response.ok) {
-      return res.status(response.status).json({
-        error: data?.error?.message || "Google Places API isteği başarısız."
+      const response = await fetch(PLACES_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": process.env.GOOGLE_PLACES_API_KEY,
+          "X-Goog-FieldMask": fieldMask
+        },
+        body: JSON.stringify(body)
       });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return res.status(response.status).json({
+          error: data?.error?.message || "Google Places API isteği başarısız."
+        });
+      }
+
+      allPlaces.push(...(data.places || []));
+      pageToken = data.nextPageToken || null;
+
+      if (!pageToken) break;
+
+      // Google'ın nextPageToken'ının aktifleşmesi için kısa bir bekleme.
+      await new Promise(resolve => setTimeout(resolve, 1200));
     }
 
-    const leads = (data.places || []).map((place) => {
+    // Aynı işletmenin farklı sayfalarda tekrarlanmasını engelle.
+    const uniquePlaces = Array.from(
+      new Map(allPlaces.map(place => [place.id, place])).values()
+    );
+
+    const leads = uniquePlaces.map((place) => {
       const address = place.formattedAddress || "";
       return {
         id: place.id,
@@ -67,6 +95,8 @@ app.get("/api/leads", async (req, res) => {
         instagram: "",
         phone: place.nationalPhoneNumber || "",
         mapsUrl: place.googleMapsUri || "",
+        rating: place.rating ?? null,
+        reviewCount: place.userRatingCount ?? 0,
         status: "Yeni"
       };
     });
