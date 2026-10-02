@@ -96,6 +96,28 @@ function App() {
     window.open(`https://www.google.com/search?q=${search}`, "_blank", "noopener,noreferrer");
   };
 
+  const buildMessage = (lead) => `Merhaba ${lead.name} 👋
+
+Web siteniz olmadığı için size ulaşmak istedik. Vercodex olarak işletmelere modern, mobil uyumlu web siteleri ve online randevu sistemleri geliştiriyoruz.
+
+İsterseniz ${lead.name} için hazırlayabileceğimiz örnek tasarımı ücretsiz gösterebiliriz.
+
+İyi çalışmalar 🙌`;
+
+  const copyMessage = async (lead) => {
+    try {
+      await navigator.clipboard.writeText(buildMessage(lead));
+      setError("");
+      alert("Mesaj panoya kopyalandı. Instagram DM'ye yapıştırabilirsin.");
+    } catch {
+      setError("Mesaj kopyalanamadı. Tarayıcı izinlerini kontrol et.");
+    }
+  };
+
+  const openInstagram = () => {
+    window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
+  };
+
   const exportCsv = () => {
     if (!filtered.length) return;
     const headers = ["İşletme","Kategori","Adres","Telefon","Web Sitesi","Instagram","Puan","Yorum Sayısı","Durum","Google Maps"];
@@ -206,9 +228,14 @@ function App() {
                       : <span className="missing">Yok</span>}
                     </td>
                     <td>
-                      <button className="instagram-btn" onClick={()=>instagramSearch(lead)} title="Google üzerinden Instagram hesabını ara">
-                        <Instagram size={14}/> Bul
-                      </button>
+                      <div className="social-actions">
+                        <button className="instagram-btn" onClick={()=>instagramSearch(lead)} title="Google üzerinden Instagram hesabını ara">
+                          <Instagram size={14}/> Bul
+                        </button>
+                        <button className="message-btn" onClick={()=>copyMessage(lead)} title="Kişiselleştirilmiş mesajı kopyala">
+                          Mesaj
+                        </button>
+                      </div>
                     </td>
                     <td>
                       <div className="rating-cell">
@@ -227,7 +254,7 @@ function App() {
             </table>
           </div>
           <div className="results-footer">
-            <span>Instagram için <b>Bul</b> butonu Google'da işletme adına göre arama açar; hesabı sen doğrulayabilirsin.</span>
+            <span><b>Bul</b> Instagram hesabını arar · <b>Mesaj</b> işletmeye özel DM metnini panoya kopyalar.</span>
             <a href="https://github.com/hasanceylan2375-jpg/Vercodex-LeadFinder" target="_blank" rel="noreferrer">GitHub reposu <ExternalLink size={14}/></a>
           </div>
         </section>
