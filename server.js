@@ -13,6 +13,8 @@ app.get("/api/leads", async (req, res) => {
   const city = String(req.query.city || "").trim();
   const category = String(req.query.category || "Diş Kliniği").trim();
   const keyword = String(req.query.keyword || "").trim();
+  const mode = String(req.query.mode || "standard").trim();
+  const openingMode = mode === "new";
 
   if (!process.env.GOOGLE_PLACES_API_KEY) {
     return res.status(500).json({ error: "GOOGLE_PLACES_API_KEY bulunamadı. .env dosyanı kontrol et." });
@@ -21,7 +23,8 @@ app.get("/api/leads", async (req, res) => {
     return res.status(400).json({ error: "Şehir alanı zorunlu." });
   }
 
-  const textQuery = [category, keyword, city].filter(Boolean).join(" ");
+  // Yeni açılış modu aday keşfeder; Google Places tek başına açılış tarihini doğrulamaz.
+  const textQuery = openingMode ? [category, "yeni açılan açılış", keyword, city].filter(Boolean).join(" ") : [category, keyword, city].filter(Boolean).join(" ");
   const fieldMask = [
     "places.id",
     "places.displayName",
@@ -97,7 +100,9 @@ app.get("/api/leads", async (req, res) => {
         mapsUrl: place.googleMapsUri || "",
         rating: place.rating ?? null,
         reviewCount: place.userRatingCount ?? 0,
-        status: "Yeni"
+        status: "Yeni",
+        openingStatus: openingMode ? "Doğrulanmadı — kontrol et" : "",
+        openingSearchUrl: openingMode ? "https://www.google.com/search?q=" + encodeURIComponent("\"" + (place.displayName?.text || "") + "\" \"" + city + "\" (yeni açıldı OR açılış OR çok yakında)") : ""
       };
     });
 
