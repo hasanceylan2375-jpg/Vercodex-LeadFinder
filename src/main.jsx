@@ -29,6 +29,7 @@ const savedStatuses = JSON.parse(localStorage.getItem("vercodex-statuses") || "{
 function App() {
   const [city, setCity] = useState("");
   const [category, setCategory] = useState("Diş Kliniği");
+  const [leadMode, setLeadMode] = useState("standard");
   const [websiteOnly, setWebsiteOnly] = useState(true);
   const [query, setQuery] = useState("");
   const [leads, setLeads] = useState([]);
@@ -47,7 +48,8 @@ function App() {
       const params = new URLSearchParams({
         city,
         category,
-        keyword: query.trim()
+        keyword: query.trim(),
+        mode: leadMode
       });
       const response = await fetch("/api/leads?" + params.toString());
       const data = await response.json();
@@ -133,7 +135,9 @@ Web siteniz olmadığı için size ulaşmak istedik. Vercodex olarak işletmeler
       "Google Puanı": l.rating ?? "",
       "Yorum Sayısı": l.reviewCount ?? 0,
       "Durum": l.status,
-      "Google Maps": l.mapsUrl || ""
+      "Google Maps": l.mapsUrl || "",
+      "Açılış durumu": l.openingStatus || "",
+      "Açılış kanıtı araması": l.openingSearchUrl || ""
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
@@ -205,6 +209,11 @@ Web siteniz olmadığı için size ulaşmak istedik. Vercodex olarak işletmeler
               <Search size={18}/>{loading ? "Taranıyor..." : searched ? "Tekrar tara" : "İşletmeleri getir"}
             </button>
           </div>
+          <div className="mode-switch" role="group" aria-label="Arama türü">
+            <button type="button" className={leadMode === "standard" ? "mode-btn active" : "mode-btn"} onClick={() => setLeadMode("standard")}>Standart işletme ara</button>
+            <button type="button" className={leadMode === "new" ? "mode-btn active" : "mode-btn"} onClick={() => setLeadMode("new")}>Yeni açılış adaylarını ara</button>
+          </div>
+          {leadMode === "new" && <div className="opening-notice"><Sparkles size={15}/><span>Yeni açılış sinyali aranıyor. Google Places açılış tarihini doğrulamaz; her adayın “Kanıtı kontrol et” bağlantısından doğrulayın.</span></div>}
           <label className="toggle-row">
             <input type="checkbox" checked={websiteOnly} onChange={e=>setWebsiteOnly(e.target.checked)}/>
             <span className="toggle"><span/></span>
@@ -222,7 +231,7 @@ Web siteniz olmadığı için size ulaşmak istedik. Vercodex olarak işletmeler
 
         <section className="results-card">
           <div className="results-head">
-            <div><h2>Aday işletmeler</h2><span>{filtered.length} sonuç gösteriliyor · Arama başına 60'a kadar</span></div>
+            <div><h2>{leadMode === "new" ? "Yeni açılış adayları" : "Aday işletmeler"}</h2><span>{filtered.length} sonuç gösteriliyor · {leadMode === "new" ? "Açılış durumu doğrulanmadı" : "Arama başına 60’a kadar"}</span></div>
             <div className="result-actions">
               <button className="export-btn" onClick={exportExcel} disabled={!filtered.length}><Download size={14}/> Excel</button>
               <div className="result-tag"><Globe2 size={15}/> Google Places</div>
@@ -230,7 +239,7 @@ Web siteniz olmadığı için size ulaşmak istedik. Vercodex olarak işletmeler
           </div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>İşletme</th><th>Adres</th><th>Telefon</th><th>Web</th><th>Instagram</th><th>Puan</th><th>Durum</th><th></th></tr></thead>
+              <thead><tr><th>İşletme</th><th>Adres</th><th>Telefon</th><th>Web</th><th>Instagram</th>{leadMode === "new" && <th>Açılış kontrolü</th>}<th>Puan</th><th>Durum</th><th></th></tr></thead>
               <tbody>
                 {filtered.map(lead => (
                   <tr key={lead.id}>
@@ -251,6 +260,7 @@ Web siteniz olmadığı için size ulaşmak istedik. Vercodex olarak işletmeler
                         </button>
                       </div>
                     </td>
+                    {leadMode === "new" && <td><a className="website-link" href={lead.openingSearchUrl} target="_blank" rel="noreferrer"><ExternalLink size={14}/>Kanıtı kontrol et</a><span className="opening-status">{lead.openingStatus}</span></td>}
                     <td>
                       <div className="rating-cell">
                         <strong>{lead.rating ? `★ ${lead.rating.toFixed(1)}` : "—"}</strong>
@@ -263,7 +273,7 @@ Web siteniz olmadığı için size ulaşmak istedik. Vercodex olarak işletmeler
                     <td><a className="icon-btn" title="Google Maps'te aç" href={lead.mapsUrl} target="_blank" rel="noreferrer"><MapPin size={16}/></a></td>
                   </tr>
                 ))}
-                {!filtered.length && <tr><td colSpan="8" className="empty">{searched ? "Sonuç bulunamadı." : "Şehir ve kategori seçip aramayı başlat."}</td></tr>}
+                {!filtered.length && <tr><td colSpan={leadMode === "new" ? 9 : 8} className="empty">{searched ? "Sonuç bulunamadı." : "Şehir ve kategori seçip aramayı başlat."}</td></tr>}
               </tbody>
             </table>
           </div>
