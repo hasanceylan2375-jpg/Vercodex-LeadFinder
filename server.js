@@ -23,8 +23,18 @@ app.get("/api/leads", async (req, res) => {
     return res.status(400).json({ error: "Şehir alanı zorunlu." });
   }
 
-  // Yeni açılış modu aday keşfeder; Google Places tek başına açılış tarihini doğrulamaz.
-  const textQuery = openingMode ? [category, "yeni açılan açılış", keyword, city].filter(Boolean).join(" ") : [category, keyword, city].filter(Boolean).join(" ");
+  // Yeni açılış modu özellikle restoran/kafe ve güzellik merkezi gibi yerel işletmeler için aday keşfeder.
+  // Google Places açılış tarihini doğrulamaz; adayların açılış duyurusu ayrıca kontrol edilmelidir.
+  const openingTerms = {
+    "Kafe": "yeni açılan kafe açılış",
+    "Restoran": "yeni açılan restoran lokanta açılış",
+    "Güzellik Merkezi": "yeni açılan güzellik merkezi güzellik salonu açılış"
+  };
+  const openingQuery = openingTerms[category] || `yeni açılan ${category} işletme açılış`;
+  const textQuery = openingMode
+    ? [openingQuery, keyword, city].filter(Boolean).join(" ")
+    : [category, keyword, city].filter(Boolean).join(" ");
+
   const fieldMask = [
     "places.id",
     "places.displayName",
