@@ -23,14 +23,16 @@ app.get("/api/leads", async (req, res) => {
     return res.status(400).json({ error: "Şehir alanı zorunlu." });
   }
 
-  // Yeni açılış modu özellikle restoran/kafe ve güzellik merkezi gibi yerel işletmeler için aday keşfeder.
-  // Google Places açılış tarihini doğrulamaz; adayların açılış duyurusu ayrıca kontrol edilmelidir.
+  // Tek Places araması kullanılır; yeni bir sağlayıcı veya API anahtarı gerekmez.
+  // Arama terimleri yeni açılış duyurusu bulunan işletmeleri öne çıkarmayı hedefler,
+  // ancak Places sonuçlarında güvenilir geçmiş açılış tarihi bulunmadığından kesin tarih filtresi değildir.
   const openingTerms = {
-    "Kafe": "yeni açılan kafe açılış",
-    "Restoran": "yeni açılan restoran lokanta açılış",
-    "Güzellik Merkezi": "yeni açılan güzellik merkezi güzellik salonu açılış"
+    "Kafe": "yeni açılan yeni açıldı açılışını yaptı kafe",
+    "Restoran": "yeni açılan yeni açıldı açılışını yaptı restoran lokanta",
+    "Güzellik Merkezi": "yeni açılan yeni açıldı açılışını yaptı güzellik merkezi güzellik salonu",
+    "Kuaför": "yeni açılan yeni açıldı açılışını yaptı kuaför"
   };
-  const openingQuery = openingTerms[category] || `yeni açılan ${category} işletme açılış`;
+  const openingQuery = openingTerms[category] || `yeni açılan yeni açıldı açılışını yaptı ${category}`;
   const textQuery = openingMode
     ? [openingQuery, keyword, city].filter(Boolean).join(" ")
     : [category, keyword, city].filter(Boolean).join(" ");
@@ -52,8 +54,7 @@ app.get("/api/leads", async (req, res) => {
     const allPlaces = [];
     let pageToken = null;
 
-    // Text Search (New) en fazla 20 sonucu sayfa başına döndürür.
-    // Kullanıcı tek aramada daha fazla aday görebilsin diye mevcut sayfaları topluyoruz.
+    // Sayfa başına en fazla 20 sonuç; aynı arama akışında en fazla 3 sayfa.
     for (let page = 0; page < 3; page += 1) {
       const body = {
         textQuery,
@@ -87,21 +88,24 @@ app.get("/api/leads", async (req, res) => {
 
       if (!pageToken) break;
 
-      // Google'ın nextPageToken'ının aktifleşmesi için kısa bir bekleme.
       await new Promise(resolve => setTimeout(resolve, 1200));
     }
 
-    // Aynı işletmenin farklı sayfalarda tekrarlanmasını engelle.
     const uniquePlaces = Array.from(
       new Map(allPlaces.map(place => [place.id, place])).values()
     );
 
     const leads = uniquePlaces.map((place) => {
-      const address = place.formattedAddress || "";
+      const name = place.displayName?.text || "İsimsiz işletme";
+      const openingProofQuery = `"${name}" "${city}" ("yeni açıldı" OR "açılışını yaptı" OR "kapılarını açtı" OR "hizmete başladı")`;
+      const openingSearchUrl = "https://www.google.com/search?q="
+        + encodeURIComponent(openingProofQuery)
+        + "&tbs=qdr:m3";
+
       return {
         id: place.id,
-        name: place.displayName?.text || "İsimsiz işletme",
-        address,
+        name,
+        address: place.formattedAddress || "",
         city,
         category,
         website: place.websiteUri || "",
@@ -111,8 +115,8 @@ app.get("/api/leads", async (req, res) => {
         rating: place.rating ?? null,
         reviewCount: place.userRatingCount ?? 0,
         status: "Yeni",
-        openingStatus: openingMode ? "Doğrulanmadı — kontrol et" : "",
-        openingSearchUrl: openingMode ? "https://www.google.com/search?q=" + encodeURIComponent("\"" + (place.displayName?.text || "") + "\" \"" + city + "\" (yeni açıldı OR açılış OR çok yakında)") : ""
+        openingStatus: openingMode ? "Son 3 ayda kanıtı kontrol et" : "",
+        openingSearchUrl: openingMode ? openingSearchUrl : ""
       };
     });
 
